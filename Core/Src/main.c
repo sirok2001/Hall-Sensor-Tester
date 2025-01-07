@@ -22,6 +22,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "stdbool.h"
+#include "tm1637.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -57,7 +58,7 @@ bool hallState = 0;
 bool hallPrevState = 0;
 uint16_t magFreq = TIM3_DEFAULT_FREQ;
 
-bool timInProgress = 0;
+tm1637_t Mag_Display;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -171,6 +172,9 @@ int main(void)
   /* USER CODE BEGIN 2 */
   HAL_TIM_Base_Start_IT(&htim2);
   HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
+
+  tm1637_init(&Mag_Display, Mag_Display_CLK_GPIO_Port, Mag_Display_CLK_Pin, Mag_Display_DIO_GPIO_Port, Mag_Display_DIO_Pin);
+  tm1637_write_int(&Mag_Display, 8888, 0);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -291,7 +295,7 @@ static void MX_TIM3_Init(void)
 
   /* USER CODE END TIM3_Init 1 */
   htim3.Instance = TIM3;
-  htim3.Init.Prescaler = TIM3_PSC;
+  htim3.Init.Prescaler = 548;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim3.Init.Period = 261;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
@@ -337,6 +341,9 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOB, Mag_Display_DIO_Pin|Mag_Display_CLK_Pin, GPIO_PIN_RESET);
+
   /*Configure GPIO pin : Encoder_B_Pin */
   GPIO_InitStruct.Pin = Encoder_B_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
@@ -354,6 +361,13 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(Hall_Sensor_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : Mag_Display_DIO_Pin Mag_Display_CLK_Pin */
+  GPIO_InitStruct.Pin = Mag_Display_DIO_Pin|Mag_Display_CLK_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);
