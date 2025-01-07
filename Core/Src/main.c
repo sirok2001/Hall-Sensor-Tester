@@ -31,7 +31,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define TIM3_PSC
+#define TIM3_PSC 548
 #define TIM3_DEFAULT_FREQ 500
 #define ENCODER_GAIN 5
 /* USER CODE END PD */
@@ -55,7 +55,7 @@ uint16_t measuredFreq = 0;
 int16_t encoderPos = 0;
 bool hallState = 0;
 bool hallPrevState = 0;
-uint32_t magFreq = TIM3_DEFAULT_FREQ;
+uint16_t magFreq = TIM3_DEFAULT_FREQ;
 
 bool timInProgress = 0;
 /* USER CODE END PV */
@@ -71,6 +71,7 @@ static void MX_TIM3_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+//Определяет направление вращения энкодера (1 - по часовой, 0 - против)
 bool FindRotDirection(void){
 	bool clkState = HAL_GPIO_ReadPin(Encoder_A_GPIO_Port, Encoder_A_Pin);
 	bool dtState = HAL_GPIO_ReadPin(Encoder_B_GPIO_Port, Encoder_B_Pin);
@@ -92,7 +93,7 @@ void UpdMagFreq(void){
 		magFreq += ENCODER_GAIN;
 	else
 		magFreq -= ENCODER_GAIN;
-	magFreq = (magFreq < 2) ? 2 : magFreq;
+	magFreq = (magFreq < 15) ? 15 : magFreq;
 	magFreq = (magFreq > 999) ? 999 : magFreq;
 }
 
@@ -103,14 +104,15 @@ bool FieldDetect(void){
 	}return false;
 }
 
-void UpdTimFreq(TIM_HandleTypeDef *htim, uint16_t desiredFreq){
+void UpdTim3Freq(uint16_t desiredFreq){
 	uint32_t sysClockFreq = HAL_RCC_GetSysClockFreq();
-	uint32_t arr = sysClockFreq/(desiredFreq * (TIM3_PSC+1)) - 1;
-	htim->Instance->CCR1 = arr/2;
+	uint32_t arr = sysClockFreq/(desiredFreq * (TIM3_PSC + 1)) - 1;
+	if (arr > 0xFFFF) arr = 0xFFFF;
 
-	HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_1);
-	__HAL_TIM_SET_AUTORELOAD(htim, arr);
-	HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
+	HAL_TIM_PWM_Stop(&htim3, 1);
+	TIM3->ARR = arr;
+	TIM3->CCR1 = arr/2;
+	HAL_TIM_PWM_Start(&htim3, 1);
 }
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
@@ -127,7 +129,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 
 		if(elapsedAfterChange){
 			if(elapsedAfterChange == 4){
-				UpdTimFreq(&htim3, magFreq);
+				UpdTim3Freq(magFreq);
 				elapsedAfterChange = 0;
 			}else elapsedAfterChange++;
 		}
@@ -289,7 +291,7 @@ static void MX_TIM3_Init(void)
 
   /* USER CODE END TIM3_Init 1 */
   htim3.Instance = TIM3;
-  htim3.Init.Prescaler = 548;
+  htim3.Init.Prescaler = TIM3_PSC;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim3.Init.Period = 261;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
