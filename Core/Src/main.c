@@ -56,9 +56,11 @@ uint16_t measuredFreq = 0;
 int16_t encoderPos = 0;
 bool hallState = 0;
 bool hallPrevState = 0;
+bool hallProcessing = 0;
 uint16_t magFreq = TIM3_DEFAULT_FREQ;
 
 tm1637_t Mag_Display;
+tm1637_t Hall_Display;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -98,11 +100,16 @@ void UpdMagFreq(void){
 	magFreq = (magFreq > 999) ? 999 : magFreq;
 }
 
-bool FieldDetect(void){
+void FieldDetect(void){
+	hallProcessing = true;
 	for(int i = 0; i != 5; ++i){
-		if(!HAL_GPIO_ReadPin(Hall_Sensor_GPIO_Port, Hall_Sensor_Pin))
-			return true;
-	}return false;
+		if(HAL_GPIO_ReadPin(Hall_Sensor_GPIO_Port, Hall_Sensor_Pin)){
+			hallProcessing = false;
+			return;
+		}
+	}
+	hallProcessing = false;
+	++timesDetected;
 }
 
 void UpdTim3Freq(uint16_t desiredFreq){
@@ -117,10 +124,12 @@ void UpdTim3Freq(uint16_t desiredFreq){
 }
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
-	if(GPIO_Pin == Encoder_A_Pin){
+	if((GPIO_Pin == Hall_Sensor_Pin) && (!hallProcessing)){
+		FieldDetect();
+	}else if(GPIO_Pin == Encoder_A_Pin){
 		UpdMagFreq();
 		elapsedAfterChange = 1;
-	}else EXTI_error++;
+	}
 }
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
@@ -134,6 +143,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 				elapsedAfterChange = 0;
 			}else elapsedAfterChange++;
 		}
+		tm1637_write_int(&Hall_Display, measuredFreq, 0);
 	}else TIM_error++;
 }
 /* USER CODE END 0 */
@@ -170,11 +180,21 @@ int main(void)
   MX_TIM2_Init();
   MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
-  HAL_TIM_Base_Start_IT(&htim2);
-  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
 
   tm1637_init(&Mag_Display, Mag_Display_CLK_GPIO_Port, Mag_Display_CLK_Pin, Mag_Display_DIO_GPIO_Port, Mag_Display_DIO_Pin);
-  tm1637_write_int(&Mag_Display, 8888, 0);
+  tm1637_init(&Hall_Display, Hall_Display_CLK_GPIO_Port, Hall_Display_CLK_Pin, Hall_Display_DIO_GPIO_Port, Hall_Display_DIO_Pin);
+
+  tm1637_brightness(&Mag_Display, 4);
+  tm1637_brightness(&Hall_Display, 4);
+
+  tm1637_fill(&Mag_Display, 1);
+  tm1637_fill(&Hall_Display, 1);
+  HAL_Delay(1000);
+  tm1637_fill(&Mag_Display, 0);
+  tm1637_fill(&Hall_Display, 0);
+
+  HAL_TIM_Base_Start_IT(&htim2);
+  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -184,10 +204,7 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  hallState = FieldDetect();
-	  if((hallState == 1) && (hallPrevState == 0))
-		  ++timesDetected;
-	  hallPrevState = hallState;
+	  hallState = HAL_GPIO_ReadPin(Hall_Sensor_GPIO_Port, Hall_Sensor_Pin);
   }
   /* USER CODE END 3 */
 }
@@ -342,7 +359,7 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, Mag_Display_DIO_Pin|Mag_Display_CLK_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, Mag_Display_DIO_Pin|Mag_Display_CLK_Pin|Hall_Display_DIO_Pin|Hall_Display_CLK_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : Encoder_B_Pin */
   GPIO_InitStruct.Pin = Encoder_B_Pin;
@@ -358,13 +375,13 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin : Hall_Sensor_Pin */
   GPIO_InitStruct.Pin = Hall_Sensor_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(Hall_Sensor_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : Mag_Display_DIO_Pin Mag_Display_CLK_Pin */
-  GPIO_InitStruct.Pin = Mag_Display_DIO_Pin|Mag_Display_CLK_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  /*Configure GPIO pins : Mag_Display_DIO_Pin Mag_Display_CLK_Pin Hall_Display_DIO_Pin Hall_Display_CLK_Pin */
+  GPIO_InitStruct.Pin = Mag_Display_DIO_Pin|Mag_Display_CLK_Pin|Hall_Display_DIO_Pin|Hall_Display_CLK_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
@@ -372,6 +389,9 @@ static void MX_GPIO_Init(void)
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
 /* USER CODE END MX_GPIO_Init_2 */

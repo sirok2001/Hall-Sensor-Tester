@@ -49,6 +49,8 @@ extern "C" {
 
 /* USER CODE END EM */
 
+void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
+
 /* Exported functions prototypes ---------------------------------------------*/
 void Error_Handler(void);
 
@@ -62,10 +64,19 @@ void Error_Handler(void);
 #define Encoder_A_Pin GPIO_PIN_6
 #define Encoder_A_GPIO_Port GPIOA
 #define Encoder_A_EXTI_IRQn EXTI9_5_IRQn
-#define Hall_Sensor_Input_Pin GPIO_PIN_10
-#define Hall_Sensor_Input_GPIO_Port GPIOB
-#define Magnet_Pin GPIO_PIN_10
-#define Magnet_GPIO_Port GPIOA
+#define Hall_Sensor_Pin GPIO_PIN_10
+#define Hall_Sensor_GPIO_Port GPIOB
+#define Hall_Sensor_EXTI_IRQn EXTI15_10_IRQn
+#define Mag_Display_DIO_Pin GPIO_PIN_12
+#define Mag_Display_DIO_GPIO_Port GPIOB
+#define Mag_Display_CLK_Pin GPIO_PIN_13
+#define Mag_Display_CLK_GPIO_Port GPIOB
+#define Hall_Display_DIO_Pin GPIO_PIN_14
+#define Hall_Display_DIO_GPIO_Port GPIOB
+#define Hall_Display_CLK_Pin GPIO_PIN_15
+#define Hall_Display_CLK_GPIO_Port GPIOB
+#define Magnet_Pin GPIO_PIN_4
+#define Magnet_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 

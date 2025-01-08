@@ -3,6 +3,7 @@
 #include "tm1637_config.h"
 #include <string.h>
 #include <stdio.h>
+#include <core_cm3.h>
 
 #if _TM1637_FREERTOS == 0
 #define tm1637_delay_ms(x)  HAL_Delay(x)
