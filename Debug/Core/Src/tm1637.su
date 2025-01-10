@@ -1,0 +1,14 @@
+../Core/Src/tm1637.c:27:6:tm1637_delay_us	16	static,ignoring_inline_asm
+../Core/Src/tm1637.c:36:6:tm1637_start	16	static
+../Core/Src/tm1637.c:42:6:tm1637_stop	16	static
+../Core/Src/tm1637.c:52:9:tm1637_write_byte	24	static
+../Core/Src/tm1637.c:83:6:tm1637_lock	16	static
+../Core/Src/tm1637.c:90:6:tm1637_unlock	16	static
+../Core/Src/tm1637.c:95:6:tm1637_init	40	static
+../Core/Src/tm1637.c:117:6:tm1637_brightness	16	static
+../Core/Src/tm1637.c:124:6:tm1637_write_raw	32	static
+../Core/Src/tm1637.c:147:6:tm1637_write_segment	24	static
+../Core/Src/tm1637.c:154:6:tm1637_write_int	40	static
+../Core/Src/tm1637.c:176:6:tm1637_write_float	56	static
+../Core/Src/tm1637.c:245:6:tm1637_show_zero	16	static
+../Core/Src/tm1637.c:250:6:tm1637_fill	16	static

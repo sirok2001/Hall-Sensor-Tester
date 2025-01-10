@@ -48,8 +48,6 @@ TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
 
 /* USER CODE BEGIN PV */
-uint8_t EXTI_error = 0;
-uint8_t TIM_error = 0;
 const uint8_t circle[1] = {CIRCLE_MASK};
 const uint8_t emptySegment[1] = {0x0};
 
@@ -57,10 +55,11 @@ uint8_t elapsedAfterChange = 0;
 uint16_t timesDetected = 0;
 uint16_t measuredFreq = 0;
 int16_t encoderPos = 0;
+uint16_t magFreq = TIM3_DEFAULT_FREQ;
+
 bool hallState = 0;
 bool hallPrevState = 0;
 bool hallProcessing = 0;
-uint16_t magFreq = TIM3_DEFAULT_FREQ;
 
 tm1637_t Mag_Display;
 tm1637_t Hall_Display;
@@ -94,6 +93,7 @@ bool FindRotDirection(void){
 	}
 }
 
+//Обновляет заданную частоту магнита
 void UpdMagFreq(void){
 	if(FindRotDirection())
 		magFreq += ENCODER_GAIN;
@@ -106,18 +106,20 @@ void UpdMagFreq(void){
 	tm1637_write_int(&Mag_Display, magFreq, 0);
 }
 
+//Проверяет наличие восходящего фронта магнитного поля
 void FieldDetect(void){
-	hallProcessing = true;
+	hallProcessing = true; //Блокирующий флаг для прерываний по датчику Холла
 	for(int i = 0; i != 5; ++i){
-		if(HAL_GPIO_ReadPin(Hall_Sensor_GPIO_Port, Hall_Sensor_Pin)){
+		if(HAL_GPIO_ReadPin(Hall_Sensor_GPIO_Port, Hall_Sensor_Pin)){ //Датчик Холла использует инвертированную логику
 			hallProcessing = false;
 			return;
 		}
 	}
 	hallProcessing = false;
-	++timesDetected;
+	++timesDetected; //Если восходящий фронт зафиксирован - увеличиваем количество фиксаций
 }
 
+//Обновляет частоту таймера 3 в соответствии с заданной
 void UpdTim3Freq(uint16_t desiredFreq){
 	uint32_t sysClockFreq = HAL_RCC_GetSysClockFreq();
 	uint32_t arr = sysClockFreq/(desiredFreq * (TIM3_PSC + 1)) - 1;
@@ -129,38 +131,49 @@ void UpdTim3Freq(uint16_t desiredFreq){
 	HAL_TIM_PWM_Start(&htim3, 1);
 }
 
+//Обрабатывает прерывание по двум возможным каналам
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
-	if((GPIO_Pin == Hall_Sensor_Pin) && (!hallProcessing)){
+	if((GPIO_Pin == Hall_Sensor_Pin) && (!hallProcessing)){ //Прерывание по датчику Холла
 		FieldDetect();
-	}else if(GPIO_Pin == Encoder_A_Pin){
+	}else if(GPIO_Pin == Encoder_A_Pin){ //Прерывание по энкодеру
 		UpdMagFreq();
-		elapsedAfterChange = 1;
-		tm1637_write_segment(&Mag_Display, circle, 1, 3);
+		elapsedAfterChange = 1; //Запуск счётчика до обновления
+		tm1637_write_segment(&Mag_Display, circle, 1, 3); //Условное обозначение, что частота была изменена и подлежит обновлению
 	}
 }
 
-void DrawCircle(tm1637_t *tm1637_t, uint8_t position){
-	tm1637_write_segment(tm1637_t, circle, 1, position);
-}
-
-void ClearPosition(tm1637_t *tm1637_t, uint8_t position){
-	tm1637_write_segment(tm1637_t, emptySegment, 1, position);
-}
-
+//Обрабатывает прерывание по таймеру
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 	if(htim->Instance == TIM2){
-		measuredFreq = timesDetected;
-		timesDetected = 0;
+		measuredFreq = timesDetected; //По истечению секунды измеренная частота будет равна количеству фиксаций
+		timesDetected = 0; //Сброс счётчика фиксаций
 
-		if(elapsedAfterChange){
+		if(elapsedAfterChange){ //Если счётчик запущён, ждём ещё три прерывания
 			if(elapsedAfterChange == 4){
-				UpdTim3Freq(magFreq);
-				elapsedAfterChange = 0;
-				tm1637_write_segment(&Mag_Display, emptySegment, 1, 3);
+				UpdTim3Freq(magFreq); //Частота обновляется
+				elapsedAfterChange = 0; //Счётчик сбрасывается
+				tm1637_write_segment(&Mag_Display, emptySegment, 1, 3); //Условное обозначение сбрасыватся
 			}else elapsedAfterChange++;
 		}
 		tm1637_write_int(&Hall_Display, measuredFreq, 0);
-	}else TIM_error++;
+	}
+}
+
+//Локальная функция инициализации дисплеев, проведение теста (моргание всеми сегментами)
+void DisplayInit(void){
+	  tm1637_init(&Mag_Display, Mag_Display_CLK_GPIO_Port, Mag_Display_CLK_Pin, Mag_Display_DIO_GPIO_Port, Mag_Display_DIO_Pin);
+	  tm1637_init(&Hall_Display, Hall_Display_CLK_GPIO_Port, Hall_Display_CLK_Pin, Hall_Display_DIO_GPIO_Port, Hall_Display_DIO_Pin);
+
+	  tm1637_brightness(&Mag_Display, 4);
+	  tm1637_brightness(&Hall_Display, 4);
+
+	  tm1637_fill(&Mag_Display, 1);
+	  tm1637_fill(&Hall_Display, 1);
+	  HAL_Delay(1000);
+	  tm1637_fill(&Mag_Display, 0);
+	  tm1637_fill(&Hall_Display, 0);
+
+	  tm1637_write_int(&Mag_Display, magFreq, 0);
 }
 /* USER CODE END 0 */
 
@@ -196,19 +209,7 @@ int main(void)
   MX_TIM2_Init();
   MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
-
-  tm1637_init(&Mag_Display, Mag_Display_CLK_GPIO_Port, Mag_Display_CLK_Pin, Mag_Display_DIO_GPIO_Port, Mag_Display_DIO_Pin);
-  tm1637_init(&Hall_Display, Hall_Display_CLK_GPIO_Port, Hall_Display_CLK_Pin, Hall_Display_DIO_GPIO_Port, Hall_Display_DIO_Pin);
-
-  tm1637_brightness(&Mag_Display, 4);
-  tm1637_brightness(&Hall_Display, 4);
-
-  tm1637_fill(&Mag_Display, 1);
-  tm1637_fill(&Hall_Display, 1);
-  HAL_Delay(1000);
-  tm1637_fill(&Mag_Display, 0);
-  tm1637_fill(&Hall_Display, 0);
-  tm1637_write_int(&Mag_Display, magFreq, 0);
+  DisplayInit();
 
   HAL_TIM_Base_Start_IT(&htim2);
   HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
