@@ -35,6 +35,7 @@
 #define TIM3_PSC 548
 #define TIM3_DEFAULT_FREQ 500
 #define ENCODER_GAIN 5
+#define CIRCLE_MASK 0x63
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -49,6 +50,8 @@ TIM_HandleTypeDef htim3;
 /* USER CODE BEGIN PV */
 uint8_t EXTI_error = 0;
 uint8_t TIM_error = 0;
+const uint8_t circle[1] = {CIRCLE_MASK};
+const uint8_t emptySegment[1] = {0x0};
 
 uint8_t elapsedAfterChange = 0;
 uint16_t timesDetected = 0;
@@ -80,24 +83,27 @@ bool FindRotDirection(void){
 	bool dtState = HAL_GPIO_ReadPin(Encoder_B_GPIO_Port, Encoder_B_Pin);
 	if(clkState == 1){ //Восходяший фронт
 		if (dtState == 0)
-			return true;
-		else
 			return false;
+		else
+			return true;
 	}else{			   //Нисходящий фронт
 		if(dtState == 1)
-			return true;
-		else
 			return false;
+		else
+			return true;
 	}
 }
 
 void UpdMagFreq(void){
 	if(FindRotDirection())
 		magFreq += ENCODER_GAIN;
+	else if(magFreq == 999)
+		magFreq = 995;
 	else
 		magFreq -= ENCODER_GAIN;
 	magFreq = (magFreq < 15) ? 15 : magFreq;
 	magFreq = (magFreq > 999) ? 999 : magFreq;
+	tm1637_write_int(&Mag_Display, magFreq, 0);
 }
 
 void FieldDetect(void){
@@ -129,7 +135,16 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 	}else if(GPIO_Pin == Encoder_A_Pin){
 		UpdMagFreq();
 		elapsedAfterChange = 1;
+		tm1637_write_segment(&Mag_Display, circle, 1, 3);
 	}
+}
+
+void DrawCircle(tm1637_t *tm1637_t, uint8_t position){
+	tm1637_write_segment(tm1637_t, circle, 1, position);
+}
+
+void ClearPosition(tm1637_t *tm1637_t, uint8_t position){
+	tm1637_write_segment(tm1637_t, emptySegment, 1, position);
 }
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
@@ -141,6 +156,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 			if(elapsedAfterChange == 4){
 				UpdTim3Freq(magFreq);
 				elapsedAfterChange = 0;
+				tm1637_write_segment(&Mag_Display, emptySegment, 1, 3);
 			}else elapsedAfterChange++;
 		}
 		tm1637_write_int(&Hall_Display, measuredFreq, 0);
@@ -192,6 +208,7 @@ int main(void)
   HAL_Delay(1000);
   tm1637_fill(&Mag_Display, 0);
   tm1637_fill(&Hall_Display, 0);
+  tm1637_write_int(&Mag_Display, magFreq, 0);
 
   HAL_TIM_Base_Start_IT(&htim2);
   HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
@@ -204,7 +221,6 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  hallState = HAL_GPIO_ReadPin(Hall_Sensor_GPIO_Port, Hall_Sensor_Pin);
   }
   /* USER CODE END 3 */
 }
