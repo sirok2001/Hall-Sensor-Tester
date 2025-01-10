@@ -32,8 +32,11 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define DELAY_BEFORE_UPDATE 4
 #define TIM3_PSC 548
 #define TIM3_DEFAULT_FREQ 500
+#define TIM3_MAX_FREQ 999
+#define TIM3_MIN_FREQ 15
 #define ENCODER_GAIN 5
 #define CIRCLE_MASK 0x63
 /* USER CODE END PD */
@@ -51,7 +54,7 @@ TIM_HandleTypeDef htim3;
 const uint8_t circle[1] = {CIRCLE_MASK};
 const uint8_t emptySegment[1] = {0x0};
 
-uint8_t elapsedAfterChange = 0;
+volatile uint8_t updateDelayCounter = 0;
 uint16_t timesDetected = 0;
 uint16_t measuredFreq = 0;
 int16_t encoderPos = 0;
@@ -80,29 +83,30 @@ static void MX_TIM3_Init(void);
 bool FindRotDirection(void){
 	bool clkState = HAL_GPIO_ReadPin(Encoder_A_GPIO_Port, Encoder_A_Pin);
 	bool dtState = HAL_GPIO_ReadPin(Encoder_B_GPIO_Port, Encoder_B_Pin);
-	if(clkState == 1){ //Восходяший фронт
-		if (dtState == 0)
-			return false;
-		else
-			return true;
-	}else{			   //Нисходящий фронт
-		if(dtState == 1)
-			return false;
-		else
-			return true;
-	}
+
+	// Если состояния CLK и DT совпадают, вращение по часовой стрелке.
+	// Если различаются, вращение против часовой стрелки.
+	return (clkState == dtState);
 }
 
 //Обновляет заданную частоту магнита
 void UpdMagFreq(void){
-	if(FindRotDirection())
+	//Проверка на три вращения в одну сторону подряд
+	bool encState = FindRotDirection();
+	for(int i = 0; i != 3; ++i){
+		if (encState != FindRotDirection())
+			return;
+	}
+
+	//Счисление заданной частоты
+	if(encState)
 		magFreq += ENCODER_GAIN;
 	else if(magFreq == 999)
-		magFreq = 995;
+		magFreq = 995; //Уменьшение с 999 до 995, чтобы сохранять кратные 5-ти значениям
 	else
 		magFreq -= ENCODER_GAIN;
-	magFreq = (magFreq < 15) ? 15 : magFreq;
-	magFreq = (magFreq > 999) ? 999 : magFreq;
+	magFreq = (magFreq < TIM3_MIN_FREQ) ? TIM3_MIN_FREQ : magFreq;
+	magFreq = (magFreq > TIM3_MAX_FREQ) ? TIM3_MAX_FREQ : magFreq;
 	tm1637_write_int(&Mag_Display, magFreq, 0);
 }
 
@@ -131,14 +135,18 @@ void UpdTim3Freq(uint16_t desiredFreq){
 	HAL_TIM_PWM_Start(&htim3, 1);
 }
 
+void EncoderInterruptHandler(void){
+	UpdMagFreq();
+	updateDelayCounter = 1; //Запуск счётчика до обновления
+	tm1637_write_segment(&Mag_Display, circle, 1, 3); //Условное обозначение, что частота была изменена и подлежит обновлению
+}
+
 //Обрабатывает прерывание по двум возможным каналам
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 	if((GPIO_Pin == Hall_Sensor_Pin) && (!hallProcessing)){ //Прерывание по датчику Холла
 		FieldDetect();
 	}else if(GPIO_Pin == Encoder_A_Pin){ //Прерывание по энкодеру
-		UpdMagFreq();
-		elapsedAfterChange = 1; //Запуск счётчика до обновления
-		tm1637_write_segment(&Mag_Display, circle, 1, 3); //Условное обозначение, что частота была изменена и подлежит обновлению
+		EncoderInterruptHandler();
 	}
 }
 
@@ -148,12 +156,12 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 		measuredFreq = timesDetected; //По истечению секунды измеренная частота будет равна количеству фиксаций
 		timesDetected = 0; //Сброс счётчика фиксаций
 
-		if(elapsedAfterChange){ //Если счётчик запущён, ждём ещё три прерывания
-			if(elapsedAfterChange == 4){
+		if(updateDelayCounter){ //Если счётчик запущён, ждём ещё три прерывания
+			if(updateDelayCounter == DELAY_BEFORE_UPDATE){
 				UpdTim3Freq(magFreq); //Частота обновляется
-				elapsedAfterChange = 0; //Счётчик сбрасывается
+				updateDelayCounter = 0; //Счётчик сбрасывается
 				tm1637_write_segment(&Mag_Display, emptySegment, 1, 3); //Условное обозначение сбрасыватся
-			}else elapsedAfterChange++;
+			}else updateDelayCounter++;
 		}
 		tm1637_write_int(&Hall_Display, measuredFreq, 0);
 	}
